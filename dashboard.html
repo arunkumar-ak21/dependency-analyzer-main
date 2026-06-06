@@ -1,0 +1,2027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GitHub Repository Dependency Analyzer — scan repos, detect ecosystems, parse dependencies, and compute health scores.">
+    <title>Dependency Analyzer Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* ================================================================
+           DESIGN TOKENS
+           ================================================================ */
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #1c2128;
+            --bg-card: rgba(22, 27, 34, 0.8);
+            --bg-card-hover: rgba(28, 33, 40, 0.95);
+            --border: #30363d;
+            --border-light: #3d444d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent: #00d4ff;
+            --accent-secondary: #00ffc8;
+            --accent-gradient: linear-gradient(135deg, #00d4ff 0%, #00ffc8 100%);
+            --risk-low: #3fb950;
+            --risk-low-bg: rgba(63, 185, 80, 0.12);
+            --risk-medium: #d29922;
+            --risk-medium-bg: rgba(210, 153, 34, 0.12);
+            --risk-high: #f85149;
+            --risk-high-bg: rgba(248, 81, 73, 0.12);
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+            --shadow-md: 0 4px 14px rgba(0,0,0,0.4);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.5);
+            --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.15);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+            --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* ================================================================
+           RESET & BASE
+           ================================================================ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html {
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Subtle animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background:
+                radial-gradient(ellipse at 20% 0%, rgba(0, 212, 255, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 100%, rgba(0, 255, 200, 0.04) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ================================================================
+           LAYOUT
+           ================================================================ */
+        .app-container {
+            position: relative;
+            z-index: 1;
+            max-width: 1340px;
+            margin: 0 auto;
+            padding: 0 24px 60px;
+        }
+
+        /* ================================================================
+           HEADER
+           ================================================================ */
+        .header {
+            padding: 32px 0 24px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 32px;
+        }
+
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .header-logo {
+            width: 44px; height: 44px;
+            background: var(--accent-gradient);
+            border-radius: var(--radius-md);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .header-title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .header-title span {
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-version {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            background: var(--bg-tertiary);
+            padding: 3px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+
+        /* Token + Rate Limit Bar */
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .token-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 280px;
+            max-width: 520px;
+        }
+
+        .token-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .token-input {
+            flex: 1;
+            padding: 10px 14px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            transition: border-color var(--transition);
+            outline: none;
+        }
+
+        .token-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+        }
+
+        .token-input::placeholder { color: var(--text-muted); }
+
+        .rate-limit-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .rate-limit-badge .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--risk-low);
+            flex-shrink: 0;
+        }
+
+        .rate-limit-badge .dot.warning { background: var(--risk-medium); }
+        .rate-limit-badge .dot.danger { background: var(--risk-high); }
+
+        .btn-check-quota {
+            padding: 8px 14px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .btn-check-quota:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* ================================================================
+           NAVIGATION TABS
+           ================================================================ */
+        .nav-tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 4px;
+            margin-bottom: 28px;
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: var(--font-sans);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .nav-tab:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+
+        .nav-tab.active {
+            background: var(--accent-gradient);
+            color: #0d1117;
+            font-weight: 600;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .nav-tab .tab-icon { font-size: 16px; }
+
+        /* ================================================================
+           SECTIONS (shown/hidden)
+           ================================================================ */
+        .section { display: none; animation: fadeSlideIn 0.4s ease; }
+        .section.active { display: block; }
+
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ================================================================
+           CARDS
+           ================================================================ */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            margin-bottom: 20px;
+            transition: all var(--transition);
+        }
+
+        .card:hover {
+            border-color: var(--border-light);
+            box-shadow: var(--shadow-md);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ================================================================
+           FORM INPUTS & BUTTONS
+           ================================================================ */
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .input-field {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            font-size: 14px;
+            transition: all var(--transition);
+            outline: none;
+        }
+
+        .input-field:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+        }
+
+        .input-field::placeholder { color: var(--text-muted); }
+
+        textarea.input-field {
+            resize: vertical;
+            min-height: 120px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-sans);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: var(--accent-gradient);
+            color: #0d1117;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+        }
+
+        .btn-primary:active { transform: translateY(0); }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--border-light);
+            background: var(--bg-card-hover);
+        }
+
+        .btn-danger {
+            background: transparent;
+            color: var(--risk-high);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: var(--risk-high-bg);
+            border-color: var(--risk-high);
+        }
+
+        .btn-sm {
+            padding: 7px 14px;
+            font-size: 13px;
+        }
+
+        /* Upload button */
+        .upload-area {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-input-label {
+            padding: 10px 18px;
+            background: var(--bg-tertiary);
+            border: 1px dashed var(--border-light);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .file-input-label:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .file-input-hidden { display: none; }
+
+        /* ================================================================
+           PROGRESS INDICATOR
+           ================================================================ */
+        .progress-container {
+            display: none;
+            margin: 16px 0;
+        }
+
+        .progress-container.active { display: block; }
+
+        .progress-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .progress-step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text-muted);
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            transition: all 0.3s ease;
+        }
+
+        .progress-step.active {
+            color: var(--accent);
+            background: rgba(0, 212, 255, 0.06);
+        }
+
+        .progress-step.done {
+            color: var(--risk-low);
+        }
+
+        .progress-step .step-icon {
+            width: 18px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px; height: 14px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Batch progress bar */
+        .batch-progress {
+            display: none;
+            margin: 16px 0;
+        }
+
+        .batch-progress.active { display: block; }
+
+        .batch-progress-bar-track {
+            width: 100%;
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .batch-progress-bar-fill {
+            height: 100%;
+            background: var(--accent-gradient);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+
+        .batch-progress-text {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* ================================================================
+           HEALTH GAUGE
+           ================================================================ */
+        .gauge-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            flex-wrap: wrap;
+            padding: 20px 0;
+        }
+
+        .gauge-wrapper {
+            position: relative;
+            width: 200px;
+            height: 200px;
+        }
+
+        .gauge-svg {
+            width: 200px;
+            height: 200px;
+            transform: rotate(-90deg);
+        }
+
+        .gauge-bg {
+            fill: none;
+            stroke: var(--bg-tertiary);
+            stroke-width: 12;
+        }
+
+        .gauge-fill {
+            fill: none;
+            stroke-width: 12;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1),
+                        stroke 0.5s ease;
+        }
+
+        .gauge-score {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .gauge-score-value {
+            font-size: 48px;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -2px;
+        }
+
+        .gauge-score-label {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .risk-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .risk-badge.low { background: var(--risk-low-bg); color: var(--risk-low); border: 1px solid rgba(63,185,80,0.3); }
+        .risk-badge.medium { background: var(--risk-medium-bg); color: var(--risk-medium); border: 1px solid rgba(210,153,34,0.3); }
+        .risk-badge.high { background: var(--risk-high-bg); color: var(--risk-high); border: 1px solid rgba(248,81,73,0.3); }
+
+        .gauge-info {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* ================================================================
+           REPO INFO GRID
+           ================================================================ */
+        .repo-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .repo-info-item {
+            padding: 14px 16px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+        }
+
+        .repo-info-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .repo-info-value {
+            font-size: 15px;
+            font-weight: 600;
+            word-break: break-word;
+        }
+
+        /* ================================================================
+           SCORE BREAKDOWN BARS
+           ================================================================ */
+        .breakdown-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .breakdown-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .breakdown-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+
+        .breakdown-label-name { color: var(--text-secondary); }
+
+        .breakdown-label-score {
+            font-weight: 600;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .breakdown-bar-track {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .breakdown-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: var(--accent-gradient);
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 0%;
+        }
+
+        /* ================================================================
+           STATS CARDS
+           ================================================================ */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 16px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ================================================================
+           DATA TABLES
+           ================================================================ */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table th {
+            padding: 12px 16px;
+            text-align: left;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            transition: color var(--transition);
+        }
+
+        .data-table th:hover { color: var(--accent); }
+
+        .data-table th .sort-arrow {
+            display: inline-block;
+            margin-left: 4px;
+            font-size: 10px;
+            opacity: 0.4;
+        }
+
+        .data-table th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+
+        .data-table td {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+
+        .data-table tbody tr {
+            transition: background var(--transition);
+        }
+
+        .data-table tbody tr:hover {
+            background: rgba(0, 212, 255, 0.03);
+        }
+
+        .data-table tbody tr:last-child td { border-bottom: none; }
+
+        /* Color-coded batch rows */
+        .data-table tbody tr.risk-row-low { border-left: 3px solid var(--risk-low); }
+        .data-table tbody tr.risk-row-medium { border-left: 3px solid var(--risk-medium); }
+        .data-table tbody tr.risk-row-high { border-left: 3px solid var(--risk-high); }
+
+        .dep-search {
+            margin-bottom: 12px;
+        }
+
+        /* Pinning type badges */
+        .pin-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: var(--font-mono);
+        }
+
+        .pin-badge.exact { background: var(--risk-low-bg); color: var(--risk-low); }
+        .pin-badge.compatible { background: rgba(0, 212, 255, 0.1); color: var(--accent); }
+        .pin-badge.range { background: var(--risk-medium-bg); color: var(--risk-medium); }
+        .pin-badge.minimum { background: var(--risk-medium-bg); color: var(--risk-medium); }
+        .pin-badge.unpinned { background: var(--risk-high-bg); color: var(--risk-high); }
+        .pin-badge.complex { background: rgba(139,148,158,0.15); color: var(--text-secondary); }
+
+        /* ================================================================
+           BATCH RESULTS
+           ================================================================ */
+        .batch-results-table .clickable-row {
+            cursor: pointer;
+        }
+
+        .batch-results-table .clickable-row:hover {
+            background: rgba(0, 212, 255, 0.06) !important;
+        }
+
+        .expanded-detail {
+            display: none;
+            animation: fadeSlideIn 0.3s ease;
+        }
+
+        .expanded-detail.active { display: table-row; }
+
+        .expanded-detail td {
+            padding: 20px;
+            background: var(--bg-tertiary);
+        }
+
+        /* ================================================================
+           HISTORY LIST
+           ================================================================ */
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .history-item:hover {
+            border-color: var(--accent);
+            background: var(--bg-card-hover);
+            transform: translateX(4px);
+        }
+
+        .history-item-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .history-item-repo {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .history-item-time {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .history-item-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .history-score {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 15px;
+        }
+
+        /* ================================================================
+           EMPTY STATES
+           ================================================================ */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 15px;
+        }
+
+        /* ================================================================
+           ERROR / STATUS MESSAGES
+           ================================================================ */
+        .status-message {
+            padding: 12px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            margin: 12px 0;
+            display: none;
+        }
+
+        .status-message.active { display: flex; align-items: center; gap: 8px; }
+
+        .status-message.error {
+            background: var(--risk-high-bg);
+            color: var(--risk-high);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+        }
+
+        .status-message.success {
+            background: var(--risk-low-bg);
+            color: var(--risk-low);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+
+        /* ================================================================
+           RESULT CONTAINER (single)
+           ================================================================ */
+        #single-result {
+            display: none;
+            animation: fadeSlideIn 0.5s ease;
+        }
+
+        #single-result.active { display: block; }
+
+        /* ================================================================
+           RESPONSIVE
+           ================================================================ */
+        @media (max-width: 768px) {
+            .app-container { padding: 0 16px 40px; }
+            .header-top { flex-direction: column; align-items: flex-start; }
+            .token-input-group { max-width: 100%; }
+            .gauge-container { flex-direction: column; align-items: center; }
+            .nav-tab { padding: 10px 12px; font-size: 13px; }
+            .nav-tab .tab-label { display: none; }
+            .nav-tab .tab-icon { font-size: 18px; }
+            .repo-info-grid { grid-template-columns: 1fr 1fr; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+        }
+
+        /* ================================================================
+           ANIMATIONS
+           ================================================================ */
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 8px rgba(0,212,255,0.2); }
+            50% { box-shadow: 0 0 20px rgba(0,212,255,0.4); }
+        }
+
+        .analyzing .btn-primary { animation: pulseGlow 1.5s ease infinite; }
+
+        /* Scroll bar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+
+    <!-- ============================================================
+         HEADER
+         ============================================================ -->
+    <header class="header">
+        <div class="header-top">
+            <div class="header-brand">
+                <div class="header-logo">📦</div>
+                <div>
+                    <h1 class="header-title">Dependency <span>Analyzer</span></h1>
+                </div>
+                <span class="header-version">v3.0</span>
+            </div>
+            <div class="rate-limit-badge" id="rate-limit-badge">
+                <span class="dot" id="rate-dot"></span>
+                <span id="rate-limit-text">Checking quota...</span>
+            </div>
+        </div>
+        <div class="header-controls">
+            <button class="btn-check-quota" id="btn-check-quota" onclick="checkRateLimit()">
+                Check Quota
+            </button>
+        </div>
+    </header>
+
+    <!-- ============================================================
+         NAVIGATION
+         ============================================================ -->
+    <nav class="nav-tabs" id="nav-tabs">
+        <button class="nav-tab active" data-section="single" id="tab-single">
+            <span class="tab-icon">🔍</span>
+            <span class="tab-label">Single Repo</span>
+        </button>
+        <button class="nav-tab" data-section="batch" id="tab-batch">
+            <span class="tab-icon">📊</span>
+            <span class="tab-label">Batch Analyzer</span>
+        </button>
+        <button class="nav-tab" data-section="history" id="tab-history">
+            <span class="tab-icon">📁</span>
+            <span class="tab-label">Previous Analyses</span>
+        </button>
+    </nav>
+
+    <!-- ============================================================
+         SECTION A: SINGLE REPO ANALYZER
+         ============================================================ -->
+    <div class="section active" id="section-single">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">🔍 Analyze a Repository</h2>
+            </div>
+            <div class="input-group">
+                <input type="text" class="input-field" id="single-repo-input"
+                       placeholder="owner/repo (e.g. django/django)"
+                       autocomplete="off">
+                <button class="btn btn-primary" id="btn-analyze-single" onclick="analyzeSingle()">
+                    <span>⚡</span> Analyze
+                </button>
+            </div>
+
+            <!-- Progress -->
+            <div class="progress-container" id="single-progress">
+                <div class="progress-steps" id="single-progress-steps">
+                    <div class="progress-step" data-step="fetching_metadata">
+                        <span class="step-icon">⏳</span> Fetching repository metadata...
+                    </div>
+                    <div class="progress-step" data-step="scanning_files">
+                        <span class="step-icon">⏳</span> Scanning repository files...
+                    </div>
+                    <div class="progress-step" data-step="detecting_ecosystems">
+                        <span class="step-icon">⏳</span> Detecting programming ecosystems...
+                    </div>
+                    <div class="progress-step" data-step="parsing_deps">
+                        <span class="step-icon">⏳</span> Parsing dependency files...
+                    </div>
+                    <div class="progress-step" data-step="computing_score">
+                        <span class="step-icon">⏳</span> Computing health score...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status message -->
+            <div class="status-message" id="single-status"></div>
+        </div>
+
+        <!-- Result (hidden until analysis completes) -->
+        <div id="single-result"></div>
+    </div>
+
+    <!-- ============================================================
+         SECTION B: BATCH ANALYZER
+         ============================================================ -->
+    <div class="section" id="section-batch">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📊 Batch Repository Analyzer</h2>
+            </div>
+            <textarea class="input-field" id="batch-repos-input"
+                      placeholder="Enter repository names, one per line:&#10;django/django&#10;pallets/flask&#10;expressjs/express"></textarea>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:12px; flex-wrap:wrap; gap:10px;">
+                <div class="upload-area">
+                    <label class="file-input-label" for="batch-file-input">
+                        📄 Upload .txt file
+                    </label>
+                    <input type="file" class="file-input-hidden" id="batch-file-input" accept=".txt" onchange="handleFileUpload(event)">
+                </div>
+                <button class="btn btn-primary" id="btn-analyze-batch" onclick="analyzeBatch()">
+                    <span>🚀</span> Analyze All
+                </button>
+            </div>
+
+            <!-- Batch progress -->
+            <div class="batch-progress" id="batch-progress">
+                <div class="batch-progress-text">
+                    <span id="batch-progress-label">Analyzing...</span>
+                    <span id="batch-progress-count">0 / 0</span>
+                </div>
+                <div class="batch-progress-bar-track">
+                    <div class="batch-progress-bar-fill" id="batch-progress-fill"></div>
+                </div>
+            </div>
+
+            <div class="status-message" id="batch-status"></div>
+        </div>
+
+        <!-- Batch results table -->
+        <div class="card" id="batch-results-card" style="display:none;">
+            <div class="card-header">
+                <h2 class="card-title">📋 Results</h2>
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table batch-results-table" id="batch-results-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortBatchTable('repo')">Repository <span class="sort-arrow">↕</span></th>
+                            <th onclick="sortBatchTable('score')">Score <span class="sort-arrow">↕</span></th>
+                            <th onclick="sortBatchTable('risk')">Risk <span class="sort-arrow">↕</span></th>
+                            <th onclick="sortBatchTable('deps')">Deps <span class="sort-arrow">↕</span></th>
+                            <th onclick="sortBatchTable('unpinned')">Unpinned <span class="sort-arrow">↕</span></th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batch-results-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         SECTION C: PREVIOUS ANALYSES
+         ============================================================ -->
+    <div class="section" id="section-history">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📁 Previous Analyses</h2>
+                <button class="btn btn-danger btn-sm" id="btn-clear-history" onclick="clearHistory()">
+                    🗑️ Clear All
+                </button>
+            </div>
+            <div class="history-list" id="history-list">
+                <div class="empty-state" id="history-empty">
+                    <div class="empty-state-icon">📭</div>
+                    <div class="empty-state-text">No saved analyses yet. Run an analysis to see results here.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detail view for selected history item -->
+        <div id="history-detail"></div>
+    </div>
+
+</div>
+
+<!-- ================================================================
+     JAVASCRIPT
+     ================================================================ -->
+<script>
+// =====================================================================
+// STATE
+// =====================================================================
+const API = '';  // same origin
+let batchResults = [];
+let batchSortKey = null;
+let batchSortAsc = true;
+
+// =====================================================================
+// NAVIGATION
+// =====================================================================
+document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(`section-${tab.dataset.section}`).classList.add('active');
+
+        if (tab.dataset.section === 'history') loadHistory();
+    });
+});
+
+// Enter key triggers analyze
+document.getElementById('single-repo-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') analyzeSingle();
+});
+
+// =====================================================================
+// RATE LIMIT
+// =====================================================================
+async function checkRateLimit() {
+    const badge = document.getElementById('rate-limit-badge');
+    const dot = document.getElementById('rate-dot');
+    const text = document.getElementById('rate-limit-text');
+
+    try {
+        const res = await fetch(`${API}/api/rate-limit`);
+        const data = await res.json();
+        if (data.error) {
+            text.textContent = 'Could not check quota';
+            dot.className = 'dot danger';
+            return;
+        }
+        const pct = data.remaining / data.limit;
+        dot.className = pct > 0.3 ? 'dot' : pct > 0.1 ? 'dot warning' : 'dot danger';
+        text.textContent = `${data.remaining.toLocaleString()} / ${data.limit.toLocaleString()} remaining`;
+    } catch (err) {
+        text.textContent = 'Server offline';
+        dot.className = 'dot danger';
+    }
+}
+
+// Check on page load
+checkRateLimit();
+
+// =====================================================================
+// SINGLE REPO ANALYSIS
+// =====================================================================
+async function analyzeSingle() {
+    const repo = document.getElementById('single-repo-input').value.trim();
+    const btn = document.getElementById('btn-analyze-single');
+    const progress = document.getElementById('single-progress');
+    const resultDiv = document.getElementById('single-result');
+    const statusDiv = document.getElementById('single-status');
+
+    // Validate
+    if (!repo || !repo.includes('/') || repo.split('/').length !== 2) {
+        showStatus(statusDiv, 'error', '❌ Please enter a valid repository name (e.g. django/django)');
+        return;
+    }
+
+    // Reset UI
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Analyzing...';
+    btn.closest('.card').classList.add('analyzing');
+    resultDiv.className = '';
+    resultDiv.innerHTML = '';
+    statusDiv.className = 'status-message';
+    progress.classList.add('active');
+    resetProgressSteps();
+
+    // Simulate progress animation (the API doesn't stream for single, so we animate)
+    const steps = ['fetching_metadata', 'scanning_files', 'detecting_ecosystems', 'parsing_deps', 'computing_score'];
+    let stepIndex = 0;
+    const progressInterval = setInterval(() => {
+        if (stepIndex < steps.length) {
+            setProgressStep(steps[stepIndex], 'active');
+            if (stepIndex > 0) setProgressStep(steps[stepIndex - 1], 'done');
+            stepIndex++;
+        }
+    }, 600);
+
+    try {
+        const res = await fetch(`${API}/api/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo }),
+        });
+
+        clearInterval(progressInterval);
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        // Mark all steps done
+        steps.forEach(s => setProgressStep(s, 'done'));
+
+        // Mark all steps done
+        steps.forEach(s => setProgressStep(s, 'done'));
+
+        // Render result
+        setTimeout(async () => {
+            await renderSingleResult(data);
+            resultDiv.classList.add('active');
+            progress.classList.remove('active');
+            checkRateLimit();
+        }, 400);
+
+    } catch (err) {
+        clearInterval(progressInterval);
+        progress.classList.remove('active');
+        showStatus(statusDiv, 'error', `❌ ${err.message}`);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>⚡</span> Analyze';
+        btn.closest('.card').classList.remove('analyzing');
+    }
+}
+
+function resetProgressSteps() {
+    document.querySelectorAll('#single-progress-steps .progress-step').forEach(el => {
+        el.className = 'progress-step';
+        el.querySelector('.step-icon').textContent = '⏳';
+    });
+}
+
+function setProgressStep(step, state) {
+    const el = document.querySelector(`#single-progress-steps .progress-step[data-step="${step}"]`);
+    if (!el) return;
+    el.className = `progress-step ${state}`;
+    if (state === 'active') {
+        el.querySelector('.step-icon').innerHTML = '<span class="spinner"></span>';
+    } else if (state === 'done') {
+        el.querySelector('.step-icon').textContent = '✅';
+    }
+}
+
+// =====================================================================
+// RENDER SINGLE RESULT
+// =====================================================================
+async function renderSingleResult(data) {
+    const div = document.getElementById('single-result');
+    const meta = data.metadata || {};
+    const score = data.health_score ?? 0;
+    const risk = data.risk_level || 'HIGH';
+    const breakdown = data.score_breakdown || {};
+    const stats = data.summary_stats || {};
+    const deps = data.dependencies || [];
+    const ecosystems = data.ecosystems || {};
+    const alerts = data.dependabot_alerts || [];
+
+    let trendHtml = '';
+    try {
+        const hRes = await fetch(`${API}/api/history`);
+        const hData = await hRes.json();
+        const previousRuns = hData.filter(h => h.repo === data.repo && h.id !== data.id).sort((a,b) => new Date(b.analyzed_at) - new Date(a.analyzed_at));
+        if (previousRuns.length > 0) {
+            const previousScore = previousRuns[0].health_score;
+            if (previousScore !== null) {
+                const diff = score - previousScore;
+                if (diff > 0) trendHtml = `<span style="font-size:14px; margin-left:10px; color:var(--risk-low);">↗ (+${diff} since last run)</span>`;
+                else if (diff < 0) trendHtml = `<span style="font-size:14px; margin-left:10px; color:var(--risk-high);">↘ (${diff} since last run)</span>`;
+                else trendHtml = `<span style="font-size:14px; margin-left:10px; color:var(--text-secondary);">→ (No change)</span>`;
+            }
+        }
+    } catch(e) {}
+
+    const riskClass = risk.toLowerCase();
+    const riskEmoji = { LOW: '🟢', MEDIUM: '🟡', HIGH: '🔴' }[risk] || '⚪';
+    const scoreColor = risk === 'LOW' ? 'var(--risk-low)' : risk === 'MEDIUM' ? 'var(--risk-medium)' : 'var(--risk-high)';
+
+    // SVG gauge calc
+    const circumference = 2 * Math.PI * 80;
+    const offset = circumference - (score / 100) * circumference;
+
+    div.innerHTML = `
+        <!-- Repo Info -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📦 ${escHtml(data.repo)} ${trendHtml}</h2>
+                <span class="risk-badge ${riskClass}">${riskEmoji} ${risk}</span>
+            </div>
+            <div class="repo-info-grid">
+                <div class="repo-info-item">
+                    <div class="repo-info-label">Description</div>
+                    <div class="repo-info-value">${escHtml(meta.description || 'N/A')}</div>
+                </div>
+                <div class="repo-info-item">
+                    <div class="repo-info-label">Language</div>
+                    <div class="repo-info-value">${escHtml(meta.language || 'N/A')}</div>
+                </div>
+                <div class="repo-info-item">
+                    <div class="repo-info-label">Stars</div>
+                    <div class="repo-info-value">⭐ ${(meta.stargazers_count || 0).toLocaleString()}</div>
+                </div>
+                <div class="repo-info-item">
+                    <div class="repo-info-label">License</div>
+                    <div class="repo-info-value">${escHtml(meta.license || 'N/A')}</div>
+                </div>
+                <div class="repo-info-item">
+                    <div class="repo-info-label">Ecosystems</div>
+                    <div class="repo-info-value">${Object.keys(ecosystems).map(e => e.toUpperCase()).join(', ') || 'None'}</div>
+                </div>
+                <div class="repo-info-item">
+                    <div class="repo-info-label">Default Branch</div>
+                    <div class="repo-info-value">${escHtml(meta.default_branch || 'main')}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Health Score Gauge -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">🏥 Health Score</h2>
+            </div>
+            <div class="gauge-container">
+                <div class="gauge-wrapper">
+                    <svg class="gauge-svg" viewBox="0 0 200 200">
+                        <circle class="gauge-bg" cx="100" cy="100" r="80"/>
+                        <circle class="gauge-fill" cx="100" cy="100" r="80"
+                                stroke="${scoreColor}"
+                                stroke-dasharray="${circumference}"
+                                stroke-dashoffset="${circumference}"
+                                data-target-offset="${offset}"/>
+                    </svg>
+                    <div class="gauge-score">
+                        <div class="gauge-score-value" style="color:${scoreColor}" data-target="${score}">0</div>
+                        <div class="gauge-score-label">out of 100</div>
+                    </div>
+                </div>
+                <div class="gauge-info">
+                    <div class="risk-badge ${riskClass}" style="font-size:16px; padding:10px 22px;">
+                        ${riskEmoji} ${risk} RISK
+                    </div>
+                    <div style="color:var(--text-secondary); font-size:13px; max-width:260px;">
+                        ${score >= 80 ? 'Dependencies are well-managed with strong version pinning.' :
+                          score >= 50 ? 'Some dependency management areas need attention.' :
+                          'Significant dependency risks detected. Review recommended.'}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Score Breakdown -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📊 Score Breakdown</h2>
+            </div>
+            <div class="breakdown-list">
+                ${renderBreakdownBar('Version Pinning Quality', breakdown.pinning_quality, 40)}
+                ${renderBreakdownBar('Version Range Tightness', breakdown.range_tightness, 20)}
+                ${renderBreakdownBar('Dependency Count Risk', breakdown.count_risk, 15)}
+                ${renderBreakdownBar('Outdated Version Flags', breakdown.outdated_flags, 15)}
+                ${renderBreakdownBar('Manifest Completeness', breakdown.completeness, 10)}
+                ${breakdown.cve_penalty ? `<div style="color:var(--risk-high); margin-top:8px; font-size:13px; font-weight:bold;">- ${breakdown.cve_penalty} pts (Vulnerabilities)</div>` : ''}
+                ${breakdown.license_penalty ? `<div style="color:var(--risk-high); margin-top:8px; font-size:13px; font-weight:bold;">- ${breakdown.license_penalty} pts (License Conflict)</div>` : ''}
+                ${breakdown.is_archived ? `<div style="color:var(--risk-high); margin-top:8px; font-size:13px; font-weight:bold;">- ${breakdown.maintenance_penalty} pts (Repository is officially ARCHIVED)</div>` : breakdown.maintenance_penalty ? `<div style="color:var(--risk-high); margin-top:8px; font-size:13px; font-weight:bold;">- ${breakdown.maintenance_penalty} pts (Abandoned/Unmaintained)</div>` : ''}
+            </div>
+        </div>
+
+        <!-- Dependabot Alerts -->
+        ${alerts.length > 0 ? `
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">🚨 Dependabot Alerts (${alerts.length})</h2>
+            </div>
+            <div style="max-height:200px; overflow-y:auto; margin-top:8px;">
+                <table class="data-table" style="font-size:12px;">
+                    <thead><tr><th>Package</th><th>Severity</th><th>Summary</th></tr></thead>
+                    <tbody>
+                        ${alerts.map(a => {
+                            const sev = (a.security_vulnerability?.severity || 'unknown').toUpperCase();
+                            const sevColor = sev === 'CRITICAL' ? 'var(--risk-high)' : sev === 'HIGH' ? '#ff7b72' : sev === 'MEDIUM' ? 'var(--risk-medium)' : 'var(--text-secondary)';
+                            return `<tr>
+                                <td style="font-family:var(--font-mono)">${escHtml(a.security_vulnerability?.package?.name || 'unknown')}</td>
+                                <td style="color:${sevColor}; font-weight:bold;">${sev}</td>
+                                <td>${escHtml(a.security_advisory?.summary || '')}</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>` : ''}
+
+        <!-- Summary Stats -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📈 Summary Statistics</h2>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">${stats.total_dependencies || 0}</div>
+                    <div class="stat-label">Total Deps</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.production_deps || 0}</div>
+                    <div class="stat-label">Production</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.dev_deps || 0}</div>
+                    <div class="stat-label">Dev / Test</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.pinned_count || 0}</div>
+                    <div class="stat-label">Pinned</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.unpinned_count || 0}</div>
+                    <div class="stat-label">Unpinned</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${((stats.pinning_ratio || 0) * 100).toFixed(0)}%</div>
+                    <div class="stat-label">Pinning Ratio</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dependency Table -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📋 Dependencies (${deps.length})</h2>
+            </div>
+            <input type="text" class="input-field dep-search" placeholder="🔍 Search dependencies..."
+                   oninput="filterDepTable(this.value)">
+            <div class="table-wrapper">
+                <table class="data-table" id="dep-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Package</th>
+                            <th>Version</th>
+                            <th>Pinning</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Latest</th>
+                            <th>License</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dep-table-body">
+                        ${deps.map((d, i) => `
+                            <tr class="dep-row">
+                                <td style="color:var(--text-muted)">${i + 1}</td>
+                                <td style="font-weight:600; font-family:var(--font-mono); font-size:12px;">${escHtml(d.name)}</td>
+                                <td style="font-family:var(--font-mono); font-size:12px; color:var(--text-secondary)">${escHtml(d.version_constraint || '*')}</td>
+                                <td><span class="pin-badge ${d.pinning_type}">${d.pinning_type}</span></td>
+                                <td>${d.is_dev ? '<span style="color:var(--risk-medium)">dev</span>' : '<span style="color:var(--risk-low)">prod</span>'}</td>
+                                <td><span style="font-size:11px; padding:2px 6px; border-radius:4px; background:var(--bg-secondary); color:${d.is_transitive ? 'var(--text-secondary)' : 'var(--accent)'}">${d.is_transitive ? 'transitive' : 'direct'}</span></td>
+                                <td style="font-family:var(--font-mono); font-size:12px; color:var(--text-secondary)">${escHtml(d.latest_version || '-')}</td>
+                                <td style="font-size:12px; color:var(--text-muted)" title="${escHtml(d.license || 'unknown')}">${escHtml((d.license || 'unknown').length > 50 ? (d.license || 'unknown').substring(0, 47) + '...' : (d.license || 'unknown'))}</td>
+                                <td style="font-size:12px; color:var(--text-muted)">${escHtml(d.source_file)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conclusion -->
+        <div class="card" style="margin-top: 24px; border-left: 4px solid ${scoreColor};">
+            <div class="card-header">
+                <h2 class="card-title">📝 Overall Conclusion</h2>
+            </div>
+            <div style="font-size: 14px; line-height: 1.6; color: var(--text-primary);">
+                <p style="margin-bottom: 12px;"><strong>Risk Level:</strong> <span class="risk-badge ${riskClass}" style="display:inline-block; padding: 2px 8px; font-size: 12px;">${riskEmoji} ${risk}</span></p>
+                <p style="margin-bottom: 12px;">
+                    ${breakdown.is_archived ? 
+                        (breakdown.base_score >= 80 ? 
+                            `Historically, this repository demonstrated excellent dependency management with a base score of <strong>${breakdown.base_score}</strong>. However, because it is officially <strong>ARCHIVED</strong> by the owner, a <strong>-${breakdown.maintenance_penalty} point penalty</strong> was applied. It will receive no future security updates and is unsafe for production use.` : 
+                            `This repository is officially <strong>ARCHIVED</strong> by the owner. It had a historical base score of <strong>${breakdown.base_score}</strong>, but after applying a <strong>-${breakdown.maintenance_penalty} point abandonment penalty</strong>, it is completely unsafe for production use.`) :
+                      (score >= 80 ? 'The repository demonstrates strong dependency management practices. Dependencies are tightly pinned and regularly updated. Minimal action is required.' : 
+                      score >= 50 ? 'The repository has moderate dependency risks. Consider reviewing unpinned dependencies and updating outdated packages to improve security and stability.' : 
+                      'The repository is at high risk due to poor dependency management, significant vulnerabilities, or severe license conflicts. Immediate action is recommended to pin dependencies and resolve CVEs.')}
+                </p>
+                ${breakdown.cve_penalty ? `<p style="color: var(--risk-high); font-weight: bold; margin-bottom: 8px;">⚠️ Critical action required to resolve Dependabot alerts.</p>` : ''}
+                ${breakdown.license_penalty ? `<p style="color: var(--risk-high); font-weight: bold; margin-bottom: 8px;">⚠️ Critical action required to address GPL license conflicts in a proprietary codebase.</p>` : ''}
+                ${(!breakdown.is_archived && breakdown.maintenance_penalty >= 30) ? `<p style="color: var(--risk-high); font-weight: bold; margin-bottom: 8px;">⚠️ Project appears severely abandoned (no updates for over 2 years). This introduces significant security risks as vulnerabilities will go unpatched.</p>` : ''}
+                ${(!breakdown.is_archived && breakdown.maintenance_penalty > 0 && breakdown.maintenance_penalty < 30) ? `<p style="color: var(--risk-high); font-weight: bold; margin-bottom: 8px;">⚠️ Project appears unmaintained (no recent updates). Proceed with caution.</p>` : ''}
+            </div>
+        </div>
+    `;
+
+    // Animate gauge after render
+    requestAnimationFrame(() => {
+        setTimeout(() => animateGauge(), 100);
+    });
+}
+
+function renderBreakdownBar(label, value, max) {
+    const pct = max > 0 ? ((value || 0) / max) * 100 : 0;
+    return `
+        <div class="breakdown-item">
+            <div class="breakdown-label">
+                <span class="breakdown-label-name">${label}</span>
+                <span class="breakdown-label-score">${(value || 0).toFixed(1)} / ${max}</span>
+            </div>
+            <div class="breakdown-bar-track">
+                <div class="breakdown-bar-fill" data-pct="${pct}" style="width:0%"></div>
+            </div>
+        </div>
+    `;
+}
+
+function animateGauge() {
+    // Animate SVG circle
+    const fill = document.querySelector('.gauge-fill');
+    if (fill) {
+        fill.style.strokeDashoffset = fill.getAttribute('data-target-offset');
+    }
+
+    // Animate score counter
+    const scoreEl = document.querySelector('.gauge-score-value');
+    if (scoreEl) {
+        const target = parseInt(scoreEl.getAttribute('data-target'));
+        animateCounter(scoreEl, 0, target, 1200);
+    }
+
+    // Animate breakdown bars
+    document.querySelectorAll('.breakdown-bar-fill').forEach(bar => {
+        setTimeout(() => {
+            bar.style.width = bar.getAttribute('data-pct') + '%';
+        }, 300);
+    });
+}
+
+function animateCounter(el, start, end, duration) {
+    const startTime = performance.now();
+    function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const ease = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+        el.textContent = Math.round(start + (end - start) * ease);
+        if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+}
+
+function filterDepTable(query) {
+    const rows = document.querySelectorAll('#dep-table-body .dep-row');
+    const q = query.toLowerCase();
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+    });
+}
+
+// =====================================================================
+// BATCH ANALYSIS
+// =====================================================================
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        document.getElementById('batch-repos-input').value = e.target.result;
+    };
+    reader.readAsText(file);
+}
+
+async function analyzeBatch() {
+    const raw = document.getElementById('batch-repos-input').value.trim();
+    const btn = document.getElementById('btn-analyze-batch');
+    const statusDiv = document.getElementById('batch-status');
+
+    if (!raw) {
+        showStatus(statusDiv, 'error', '❌ Please enter at least one repository name.');
+        return;
+    }
+
+    // Parse repos (skip blanks and comments)
+    const repos = raw.split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#'));
+
+    if (repos.length === 0) {
+        showStatus(statusDiv, 'error', '❌ No valid repository names found.');
+        return;
+    }
+
+    // Reset UI
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Analyzing...';
+    statusDiv.className = 'status-message';
+    batchResults = [];
+    document.getElementById('batch-results-body').innerHTML = '';
+    document.getElementById('batch-results-card').style.display = 'none';
+
+    const progressDiv = document.getElementById('batch-progress');
+    const progressFill = document.getElementById('batch-progress-fill');
+    const progressLabel = document.getElementById('batch-progress-label');
+    const progressCount = document.getElementById('batch-progress-count');
+
+    progressDiv.classList.add('active');
+    progressFill.style.width = '0%';
+    progressCount.textContent = `0 / ${repos.length}`;
+
+    try {
+        const res = await fetch(`${API}/api/analyze/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repos }),
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let completed = 0;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // Parse SSE events from buffer
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // keep incomplete line
+
+            let eventType = '';
+            for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                    eventType = line.slice(7).trim();
+                } else if (line.startsWith('data: ')) {
+                    const jsonStr = line.slice(6);
+                    try {
+                        const eventData = JSON.parse(jsonStr);
+                        handleBatchEvent(eventType, eventData, repos.length);
+
+                        if (eventType === 'result') {
+                            completed++;
+                            const pct = (completed / repos.length) * 100;
+                            progressFill.style.width = pct + '%';
+                            progressLabel.textContent = `Analyzing ${eventData.repo}...`;
+                            progressCount.textContent = `${completed} / ${repos.length}`;
+                        } else if (eventType === 'progress') {
+                            progressLabel.textContent = `Analyzing ${eventData.repo}...`;
+                        } else if (eventType === 'error' && eventData.fatal) {
+                            progressLabel.textContent = `Rate limit hit — stopped.`;
+                        } else if (eventType === 'done') {
+                            progressLabel.textContent = 'Complete!';
+                            progressCount.textContent = `${eventData.completed} / ${eventData.total}`;
+                            progressFill.style.width = '100%';
+                        }
+                    } catch (e) { /* skip malformed */ }
+                }
+            }
+        }
+
+        document.getElementById('batch-results-card').style.display = 'block';
+        showStatus(statusDiv, 'success', `✅ Batch analysis complete — ${batchResults.length} repos analyzed.`);
+
+    } catch (err) {
+        showStatus(statusDiv, 'error', `❌ ${err.message}`);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>🚀</span> Analyze All';
+        setTimeout(() => progressDiv.classList.remove('active'), 2000);
+        checkRateLimit();
+    }
+}
+
+function handleBatchEvent(type, data, total) {
+    if (type === 'result') {
+        batchResults.push(data);
+        renderBatchRow(data);
+    } else if (type === 'error') {
+        // Add error as a row
+        batchResults.push({
+            repo: data.repo,
+            health_score: null,
+            risk_level: 'ERROR',
+            summary_stats: {},
+            error: data.error,
+        });
+        renderBatchRow({
+            repo: data.repo,
+            health_score: '-',
+            risk_level: 'ERROR',
+            summary_stats: {},
+        });
+    }
+}
+
+function renderBatchRow(data) {
+    const tbody = document.getElementById('batch-results-body');
+    const card = document.getElementById('batch-results-card');
+    card.style.display = 'block';
+
+    const risk = data.risk_level || 'HIGH';
+    const riskClass = risk.toLowerCase();
+    const riskEmoji = { LOW: '🟢', MEDIUM: '🟡', HIGH: '🔴', ERROR: '⚫' }[risk] || '⚪';
+    const stats = data.summary_stats || {};
+    const score = data.health_score;
+    const idx = batchResults.length - 1;
+
+    const tr = document.createElement('tr');
+    tr.className = `clickable-row risk-row-${riskClass}`;
+    tr.innerHTML = `
+        <td style="font-weight:600; font-family:var(--font-mono); font-size:13px;">${escHtml(data.repo)}</td>
+        <td style="font-weight:700; font-family:var(--font-mono);">${score !== null && score !== '-' ? score : '-'}</td>
+        <td><span class="risk-badge ${riskClass}">${riskEmoji} ${risk}</span></td>
+        <td>${stats.total_dependencies ?? '-'}</td>
+        <td>${stats.unpinned_count ?? '-'}</td>
+        <td><button class="btn btn-secondary btn-sm" onclick="toggleBatchDetail(${idx}, this, event)">View</button></td>
+    `;
+    tbody.appendChild(tr);
+}
+
+function toggleBatchDetail(idx, btn, event) {
+    event.stopPropagation();
+    const existing = document.getElementById(`batch-detail-${idx}`);
+    if (existing) {
+        existing.remove();
+        btn.textContent = 'View';
+        return;
+    }
+
+    const data = batchResults[idx];
+    if (!data || data.health_score === null) return;
+
+    const row = btn.closest('tr');
+    const detailRow = document.createElement('tr');
+    detailRow.id = `batch-detail-${idx}`;
+    detailRow.className = 'expanded-detail active';
+    detailRow.innerHTML = `<td colspan="6">${renderInlineDetail(data)}</td>`;
+    row.after(detailRow);
+    btn.textContent = 'Hide';
+}
+
+function renderInlineDetail(data) {
+    const meta = data.metadata || {};
+    const breakdown = data.score_breakdown || {};
+    const stats = data.summary_stats || {};
+    const deps = data.dependencies || [];
+
+    return `
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:13px;">
+            <div>
+                <strong>Description:</strong> ${escHtml(meta.description || 'N/A')}<br>
+                <strong>Language:</strong> ${escHtml(meta.language || 'N/A')}<br>
+                <strong>Stars:</strong> ⭐ ${(meta.stargazers_count || 0).toLocaleString()}<br>
+                <strong>License:</strong> ${escHtml(meta.license || 'N/A')}
+            </div>
+            <div>
+                <strong>Pinning Quality:</strong> ${(breakdown.pinning_quality || 0).toFixed(1)}/40<br>
+                <strong>Range Tightness:</strong> ${(breakdown.range_tightness || 0).toFixed(1)}/20<br>
+                <strong>Count Risk:</strong> ${(breakdown.count_risk || 0).toFixed(1)}/15<br>
+                <strong>Outdated Flags:</strong> ${(breakdown.outdated_flags || 0).toFixed(1)}/15<br>
+                <strong>Completeness:</strong> ${(breakdown.completeness || 0).toFixed(1)}/10
+            </div>
+        </div>
+        <div style="margin-top:12px;">
+            <strong>Dependencies (${deps.length}):</strong>
+            Total: ${stats.total_dependencies || 0} |
+            Pinned: ${stats.pinned_count || 0} |
+            Unpinned: ${stats.unpinned_count || 0} |
+            Ratio: ${((stats.pinning_ratio || 0) * 100).toFixed(0)}%
+        </div>
+        ${deps.length > 0 ? `
+        <details style="margin-top:10px;">
+            <summary style="cursor:pointer; color:var(--accent); font-weight:600;">Show all ${deps.length} dependencies</summary>
+            <div style="max-height:300px; overflow-y:auto; margin-top:8px;">
+                <table class="data-table" style="font-size:12px;">
+                    <thead>
+                        <tr>
+                            <th>Package</th>
+                            <th>Version</th>
+                            <th>Pinning</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Latest</th>
+                            <th>License</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${deps.map(d => `
+                            <tr>
+                                <td style="font-family:var(--font-mono)">${escHtml(d.name)}</td>
+                                <td style="font-family:var(--font-mono); color:var(--text-secondary)">${escHtml(d.version_constraint || '*')}</td>
+                                <td><span class="pin-badge ${d.pinning_type}">${d.pinning_type}</span></td>
+                                <td>${d.is_dev ? 'dev' : 'prod'}</td>
+                                <td><span style="font-size:11px; padding:2px 6px; border-radius:4px; background:var(--bg-secondary); color:${d.is_transitive ? 'var(--text-secondary)' : 'var(--accent)'}">${d.is_transitive ? 'transitive' : 'direct'}</span></td>
+                                <td style="font-family:var(--font-mono); color:var(--text-secondary)">${escHtml(d.latest_version || '-')}</td>
+                                <td style="font-size:12px;">${escHtml(d.license || 'unknown')}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </details>` : ''}
+    `;
+}
+
+function sortBatchTable(key) {
+    if (batchSortKey === key) {
+        batchSortAsc = !batchSortAsc;
+    } else {
+        batchSortKey = key;
+        batchSortAsc = true;
+    }
+
+    batchResults.sort((a, b) => {
+        let va, vb;
+        switch (key) {
+            case 'repo': va = a.repo || ''; vb = b.repo || ''; break;
+            case 'score': va = a.health_score ?? -1; vb = b.health_score ?? -1; break;
+            case 'risk':
+                const riskOrder = { LOW: 1, MEDIUM: 2, HIGH: 3, ERROR: 4 };
+                va = riskOrder[a.risk_level] || 9;
+                vb = riskOrder[b.risk_level] || 9;
+                break;
+            case 'deps':
+                va = (a.summary_stats || {}).total_dependencies ?? 0;
+                vb = (b.summary_stats || {}).total_dependencies ?? 0;
+                break;
+            case 'unpinned':
+                va = (a.summary_stats || {}).unpinned_count ?? 0;
+                vb = (b.summary_stats || {}).unpinned_count ?? 0;
+                break;
+            default: return 0;
+        }
+        if (typeof va === 'string') return batchSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+        return batchSortAsc ? va - vb : vb - va;
+    });
+
+    // Re-render
+    const tbody = document.getElementById('batch-results-body');
+    tbody.innerHTML = '';
+    batchResults.forEach((data, i) => {
+        // Re-index and render
+        const risk = data.risk_level || 'HIGH';
+        const riskClass = risk.toLowerCase();
+        const riskEmoji = { LOW: '🟢', MEDIUM: '🟡', HIGH: '🔴', ERROR: '⚫' }[risk] || '⚪';
+        const stats = data.summary_stats || {};
+        const score = data.health_score;
+
+        const tr = document.createElement('tr');
+        tr.className = `clickable-row risk-row-${riskClass}`;
+        tr.innerHTML = `
+            <td style="font-weight:600; font-family:var(--font-mono); font-size:13px;">${escHtml(data.repo)}</td>
+            <td style="font-weight:700; font-family:var(--font-mono);">${score !== null && score !== '-' ? score : '-'}</td>
+            <td><span class="risk-badge ${riskClass}">${riskEmoji} ${risk}</span></td>
+            <td>${stats.total_dependencies ?? '-'}</td>
+            <td>${stats.unpinned_count ?? '-'}</td>
+            <td><button class="btn btn-secondary btn-sm" onclick="toggleBatchDetail(${i}, this, event)">View</button></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// =====================================================================
+// HISTORY
+// =====================================================================
+async function loadHistory() {
+    const list = document.getElementById('history-list');
+    const empty = document.getElementById('history-empty');
+
+    try {
+        const res = await fetch(`${API}/api/history`);
+        const data = await res.json();
+
+        if (!data || data.length === 0) {
+            list.innerHTML = '';
+            list.appendChild(empty);
+            empty.style.display = 'block';
+            return;
+        }
+
+        // Sort newest first
+        data.sort((a, b) => new Date(b.analyzed_at) - new Date(a.analyzed_at));
+
+        list.innerHTML = data.map((item, i) => {
+            const risk = item.risk_level || 'HIGH';
+            const riskClass = risk.toLowerCase();
+            const riskEmoji = { LOW: '🟢', MEDIUM: '🟡', HIGH: '🔴' }[risk] || '⚪';
+            const score = item.health_score ?? 0;
+            const scoreColor = risk === 'LOW' ? 'var(--risk-low)' : risk === 'MEDIUM' ? 'var(--risk-medium)' : 'var(--risk-high)';
+            const time = new Date(item.analyzed_at).toLocaleString();
+
+            return `
+                <div class="history-item" onclick="loadHistoryDetail('${item.id}')">
+                    <div class="history-item-left">
+                        <span style="font-size:18px;">${riskEmoji}</span>
+                        <div>
+                            <div class="history-item-repo">${escHtml(item.repo)}</div>
+                            <div class="history-item-time">${time}</div>
+                        </div>
+                    </div>
+                    <div class="history-item-right">
+                        <span class="history-score" style="color:${scoreColor}">${score}/100</span>
+                        <span class="risk-badge ${riskClass}" style="font-size:11px; padding:4px 10px;">${risk}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (err) {
+        list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">Could not load history. Is the server running?</div></div>`;
+    }
+}
+
+async function loadHistoryDetail(id) {
+    const detailDiv = document.getElementById('history-detail');
+    try {
+        const res = await fetch(`${API}/api/history/${id}`);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        // Render in the history detail area (reuse single result renderer logic)
+        detailDiv.innerHTML = '<div id="history-result-inner"></div>';
+        const inner = document.getElementById('history-result-inner');
+
+        // Temporary swap: render into single result, then move
+        const singleResult = document.getElementById('single-result');
+        const savedContent = singleResult.innerHTML;
+        const savedClass = singleResult.className;
+
+        renderSingleResult(data);
+        inner.innerHTML = singleResult.innerHTML;
+        singleResult.innerHTML = savedContent;
+        singleResult.className = savedClass;
+
+        // Re-animate the gauges in history detail
+        setTimeout(() => {
+            const fill = detailDiv.querySelector('.gauge-fill');
+            if (fill) fill.style.strokeDashoffset = fill.getAttribute('data-target-offset');
+
+            const scoreEl = detailDiv.querySelector('.gauge-score-value');
+            if (scoreEl) animateCounter(scoreEl, 0, parseInt(scoreEl.getAttribute('data-target')), 1200);
+
+            detailDiv.querySelectorAll('.breakdown-bar-fill').forEach(bar => {
+                setTimeout(() => { bar.style.width = bar.getAttribute('data-pct') + '%'; }, 300);
+            });
+        }, 100);
+
+        detailDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (err) {
+        detailDiv.innerHTML = `<div class="card"><div class="status-message error active">❌ ${err.message}</div></div>`;
+    }
+}
+
+async function clearHistory() {
+    if (!confirm('Delete all saved analysis results?')) return;
+    try {
+        await fetch(`${API}/api/history`, { method: 'DELETE' });
+        loadHistory();
+        document.getElementById('history-detail').innerHTML = '';
+    } catch (err) {
+        alert('Failed to clear history: ' + err.message);
+    }
+}
+
+// =====================================================================
+// UTILITIES
+// =====================================================================
+function showStatus(el, type, message) {
+    el.className = `status-message ${type} active`;
+    el.innerHTML = message;
+}
+
+function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+}
+</script>
+
+</body>
+</html>
